@@ -1,0 +1,1 @@
+# Arabic_Quranic_Ta_Semantic_Rules
