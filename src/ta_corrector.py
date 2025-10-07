@@ -14,11 +14,10 @@ def apply_semantic_ta_correction(text_output):
     candidate_words = ["نعمة", "رحمة", "سنة", "شجرة", "لعنة", "امرأة", "فطرة", "جنة", "بقية", "ابنة", "معصية", "قرة", "كلمة", "غيابة", "سخط", "لات", "جمالت"]
     
     # قائمة بأسماء الأعلام أو الأسماء المعرفة التي قد لا تبدأ بـ "الـ" (لتبسيط الكود)
-    # يمكن توسيع هذه القائمة لتشمل أسماء أعلام إضافية.
+    # ملاحظة: تم تضمين هذه القائمة لتمثيل الإضافة إلى اسم علم.
     known_proper_nouns = ["الله", "نوح", "فرعون", "لوط", "آسيا", "مريم", "إبراهيم", "موسى", "عيسى"]
     
     # قائمة بالضمائر المتصلة التي تجعل الاسم معرفة (يجب أن تتبع الكلمة مباشرة أو بفصل بسيط)
-    # (الضمائر المجرورة: ـه، ـها، ـك، ـنا، ـي، ـكم، ـهم، إلخ)
     attached_pronouns = ['هُ', 'هَا', 'كَ', 'نَا', 'يَ', 'كُم', 'هُم', 'كِ', 'هِم', 'هُما']
     
     # تقسيم النص إلى كلمات
@@ -33,28 +32,64 @@ def apply_semantic_ta_correction(text_output):
         if word_base in candidate_words and 'ة' in current_word:
             
             # 2. التحقق من وجود كلمة تالية (المضاف إليه)
-            if i + 1 < len(words):
-                next_word = words[i + 1]
+            # نستخدم i+1 لأن الإضافة إلى الضمير المتصل (الشرط ج) لا تحتاج إلى كلمة تالية
+            has_next_word = i + 1 < len(words)
+            next_word = words[i + 1] if has_next_word else ""
+            
+            # --- الشروط الموسعة للتعيين (المعلوم) ---
+            
+            # الشرط أ: الإضافة إلى المعرَّف بـ "الـ"
+            is_defined_by_al = has_next_word and next_word.startswith("ال")
+            
+            # الشرط ب: الإضافة إلى اسم عَلَم معروف
+            is_defined_by_proper_noun = has_next_word and next_word.strip('ًٌٍَةَُِ') in known_proper_nouns
+            
+            # الشرط ج: الإضافة إلى ضمير متصل بالكلمة نفسها (مثل: نعمته)
+            is_defined_by_suffix_pronoun = any(current_word.endswith(p) for p in attached_pronouns)
+            
+            # 3. تطبيق التصحيح إذا تحقق أي من شروط التعيين الموسعة
+            if is_defined_by_al or is_defined_by_proper_noun or is_defined_by_suffix_pronoun:
                 
-                # --- الشروط الموسعة للتعيين (المعلوم) ---
+                # 4. تطبيق التصحيح: استبدال التاء المربوطة بالتاء المفتوحة
+                corrected_word = current_word.replace('ة', 'ت', 1)
+                words[i] = corrected_word
                 
-                # الشرط أ: الإضافة إلى المعرَّف بـ "الـ" (الشرط الأصلي)
-                is_defined_by_al = next_word.startswith("ال")
-                
-                # الشرط ب: الإضافة إلى اسم عَلَم معروف
-                # يتم التحقق من تطابق الكلمة التالية مع قائمة الأعلام المعروفة
-                is_defined_by_proper_noun = next_word.strip('ًٌٍَةَُِ') in known_proper_nouns
-                
-                # الشرط ج: الإضافة إلى ضمير متصل بالكلمة نفسها
-                # يتم التحقق من نهاية الكلمة الحالية بأحد الضمائر المحددة (مثل: نعمتُه، رحمتُك)
-                is_defined_by_suffix_pronoun = any(current_word.endswith(p) for p in attached_pronouns)
-                
-                # 3. تطبيق التصحيح إذا تحقق أي من شروط التعيين الموسعة
-                if is_defined_by_al or is_defined_by_proper_noun or is_defined_by_suffix_pronoun:
-                    
-                    # 4. تطبيق التصحيح: استبدال التاء المربوطة بالتاء المفتوحة
-                    corrected_word = current_word.replace('ة', 'ت', 1)
-                    words[i] = corrected_word
-                    
     # إعادة تجميع الكلمات إلى نص واحد
     return " ".join(words)
+
+
+# -----------------------------------------------------------------------------
+# قسم الاختبار (يمكن تشغيله لفحص عمل الدالة)
+if __name__ == '__main__':
+    
+    print("--- اختبار نموذج تصحيح القاعدة الدلالية للتاء ---")
+    
+    # مثال 1: حالة يجب تصحيحها (نعمة مُضافة إلى معرفة بـ "الـ") - الشرط (أ)
+    text1 = "يجب أن نشكر نِعْمَةُ الخالق"
+    corrected1 = apply_semantic_ta_correction(text1)
+    print(f"\nالنص الأصلي 1: {text1}")
+    print(f"النص المصحح 1: {corrected1}  (تم تغيير 'نِعْمَةُ' إلى 'نِعْمَتُ')")
+    
+    # مثال 2: حالة لا يجب تصحيحها (الكلمة نكرة أو عامة)
+    text2 = "قرأت عن شَجَرَةٍ جميلة"
+    corrected2 = apply_semantic_ta_correction(text2)
+    print(f"\nالنص الأصلي 2: {text2}")
+    print(f"النص المصحح 2: {corrected2}  (لم يتم التصحيح)")
+    
+    # مثال 3: حالة يجب تصحيحها أخرى (رحمة مُضافة إلى معرفة بـ "الـ") - الشرط (أ)
+    text3 = "إن رَحْمَةُ الله واسعة"
+    corrected3 = apply_semantic_ta_correction(text3)
+    print(f"\nالنص الأصلي 3: {text3}")
+    print(f"النص المصحح 3: {corrected3} (تم تغيير 'رَحْمَةُ' إلى 'رَحْمَتُ')")
+    
+    # مثال 4: حالة يجب تصحيحها (التعيين باسم عَلَم: إِمْرَأَتَ نوحٍ) - الشرط (ب)
+    text4 = "زوجته هي إِمْرَأَةُ نوحٍ"
+    corrected4 = apply_semantic_ta_correction(text4)
+    print(f"\nالنص الأصلي 4: {text4}")
+    print(f"النص المصحح 4: {corrected4} (تم تغيير 'إِمْرَأَةُ' إلى 'إِمْرَأَتُ')")
+    
+    # مثال 5: حالة يجب تصحيحها (التعيين بضمير متصل: نِعْمَتُهُ) - الشرط (ج)
+    text5 = "اذكروا نِعْمَةُهُ عليكم"
+    corrected5 = apply_semantic_ta_correction(text5)
+    print(f"\nالنص الأصلي 5: {text5}")
+    print(f"النص المصحح 5: {corrected5} (تم تغيير 'نِعْمَةُهُ' إلى 'نِعْمَتُهُ')")
