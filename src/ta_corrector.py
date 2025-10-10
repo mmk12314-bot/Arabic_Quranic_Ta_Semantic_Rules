@@ -1,96 +1,87 @@
 # ta_corrector.py
 
-import csv
-import os
+# قائمة الكلمات التي يحدث فيها التناوب (المرشحة لتطبيق قاعدة المعلوم/المجهول)
+# التاء المفتوحة (ت) تحدث إذا وجدت إحدى القرائن التالية
+TA_ALTERNATING_WORDS = [
+    "رحمة", "نعمة", "سنة", "لعنة", "امرأة", "معصية",
+    "فطرة", "بقية", "كلمة", "شجرة", "قرة", "جنة",
+    "آية", "بينة", "ثمرة", "غيابة", "جمالة"
+]
 
-# ----------------------------------------------------------------------
-# تحديد مكان ملف البيانات (العثور عليه في المجلد الرئيسي)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE_PATH = os.path.join(BASE_DIR, '..', 'جدول البيانات للقاعدة_الدلالية.csv') 
-# ----------------------------------------------------------------------
+# القائمة الموحدة للقرائن التي تجعل المعنى "معلوماً" للمخاطب (تُوجب التاء المفتوحة 'ت')
+# القرائن هنا يجب أن تُستخلَص من الجدول التحليلي الذي اتفقنا عليه
+KNOWN_CLUES = {
+    # 'الرحمة' تصبح 'رحمت' إذا كان التعيين خاص بالنبوة أو القسمة الإلهية
+    "رحمة": ["ربك", "يقسمون", "آتيناه"], 
+    # 'النعمة' تصبح 'نعمت' إذا كان هناك تركيز على العدّ أو التذكير
+    "نعمة": ["الله", "تعدوا", "تذكروا"],
+    # 'امرأة' تصبح 'إمرأت' عند التخصيص باسم عَلَم
+    "امرأة": ["نوح", "لوط", "فرعون", "عمران"],
+    # 'جنة' تصبح 'جنت' عند التخصيص بوصف الجنة أو الملتقى
+    "جنة": ["نعيم", "روح"], 
+    # 'سنة' تصبح 'سنت' عندما يشدد على عدم التبديل أو التحويل
+    "سنة": ["تبديلا", "تحويلا", "الأولين"],
+    # (يمكن إضافة المزيد من الكلمات والقرائن هنا...)
+}
 
-# تحميل البيانات من ملف CSV
-def load_semantic_data(file_path):
-    """تحميل البيانات التدريبية من ملف CSV."""
-    data = []
-    try:
-        # قراءة الملف باستخدام ترميز utf-8
-        with open(file_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                data.append(row)
-    except FileNotFoundError:
-        print(f"خطأ: لم يتم العثور على ملف البيانات في المسار: {file_path}")
-        return None
-    except Exception as e:
-        print(f"خطأ أثناء قراءة ملف البيانات: {e}")
-        return None
-    return data
 
-# تحميل البيانات عند بدء تشغيل البرنامج
-SEMATNIC_TA_DATA = load_semantic_data(DATA_FILE_PATH)
-
-# قائمة الكلمات التي يحدث فيها التناوب (المستخلصة من البيانات)
-if SEMATNIC_TA_DATA:
-    TA_WORDS = list(set([d["الكلمة_الأصلية"] for d in SEMATNIC_TA_DATA]))
-else:
-    TA_WORDS = []
-
-# قائمة بأسماء المعرفة أو الضمائر التي تُنشئ التعيين (لمنطق البحث)
-DEFINITE_NOUNS = ["الله", "ربك", "الرسول", "نوح", "لوط", "فرعون", "عمران", "العزيز"]
-
-# ----------------------------------------------------------------------
-
-def apply_semantic_ta_correction(text: str) -> str:
+def apply_pragmatic_ta_rule(text: str) -> str:
     """
-    يطبق طبقة التصحيح الدلالي لتاء التأنيث بالاعتماد على البيانات المحسنة.
-    """
-    if not SEMATNIC_TA_DATA:
-        return text 
+    يطبق قاعدة المعلوم/المجهول (التعيين البرغماتي) لتاء التأنيث.
 
+    Args:
+        text (str): النص المراد تصحيحه.
+
+    Returns:
+        str: النص المصحح وفقاً للقاعدة الجديدة.
+    """
+    
     words = text.split()
     corrected_words = []
-
+    
     for i, word in enumerate(words):
-        # تجريد الكلمة من علامات الترقيم
-        clean_word = word.strip("،.؛:").strip("ةت")
+        # تجريد الكلمة من التاء المربوطة والمفتوحة للتحقق من الأصل
+        clean_word = word.strip("ةت") 
         
-        if clean_word not in TA_WORDS:
-            corrected_words.append(word)
-            continue
-        
-        is_designated = False
-        
-        # البحث عن أقرب تطابق في البيانات الموثقة 
-        for entry in SEMATNIC_TA_DATA:
-            if entry.get("الكلمة_الأصلية") == clean_word and entry.get("تصنيف_التاء") == "تعيين":
+        # 1. فحص هل الكلمة هي من الكلمات التي يحدث فيها التناوب (نطاق عمل القاعدة)
+        if clean_word in [w.strip("ة") for w in TA_ALTERNATING_WORDS]:
+            
+            # افتراض أن الأصل هو التاء المربوطة (العموم/المجهول)
+            is_designated = False 
+            word_key = clean_word + "ة"
+            
+            # --- آليات الكشف عن "القرينة المعلومة" (التي توجب التاء المفتوحة 'ت') ---
+            
+            # إذا كان الجذر موجوداً في قائمة القرائن المعلومة
+            if word_key in KNOWN_CLUES:
+                clues = KNOWN_CLUES[word_key]
                 
-                designation_type = entry.get("نوع_التعيين", "")
-                clue = entry.get("قرينة_التعيين", "").split()[0].strip().lower()
+                # البحث في نافذة سياقية محدودة (3 كلمات بعد و 3 كلمات قبل)
+                start_index = max(0, i - 3)
+                end_index = min(len(words), i + 4) # 3 كلمات بعد
                 
-                if not clue or clue == 'لا':
-                    continue
-
-                # أ) التعيين النحوي الصريح (القرينة هي كلمة تالية مباشرة)
-                if designation_type in ["نحوي صريح", "تعيين بالاسم والنوع"]:
-                    if i + 1 < len(words) and words[i+1].strip().strip(",").strip(".").lower().startswith(clue):
-                        is_designated = True
-                        break
-                
-                # ب) التعيين بالفعل أو الوصف السياقي (القرينة هي فعل أو وصف سابق)
-                elif designation_type in ["فعلي/ثبوت", "سياقي/حدثي", "نوعي/شخصي"]:
-                    # نبحث في الكلمات الأربع السابقة (نافذة سياقية)
-                    for j in range(max(0, i - 4), i):
-                        if words[j].strip().strip(",").strip(".").lower().startswith(clue):
+                for j in range(start_index, end_index):
+                    if i != j: # لا نبحث في الكلمة نفسها
+                        # التحقق من وجود القرينة المعلومة في السياق
+                        context_word = words[j].strip(",.;:").lower()
+                        if context_word in [c.lower() for c in clues]:
                             is_designated = True
                             break
-                    if is_designated:
-                        break
+            
+            # -----------------------------------------------------------
+            
+            # تطبيق القاعدة الجديدة
+            if is_designated:
+                # التاء المفتوحة = المعلوم/المحدد
+                corrected_words.append(clean_word + "ت")
+            else:
+                # التاء المربوطة = المجهول/غير المحدد
+                # ملاحظة: إذا كانت الكلمة الأصلية تحتوي على تشكيل أو مد، يجب إضافته هنا.
+                corrected_words.append(clean_word + "ة") 
         
-        # تطبيق التصحيح النهائي: تاء مفتوحة إذا تم التعيين، مربوطة إذا لا
-        if is_designated:
-            corrected_words.append(clean_word + "ت")
         else:
-            corrected_words.append(clean_word + "ة")
+            # إذا لم تكن الكلمة من نطاق عمل القاعدة، نضيفها كما هي
+            corrected_words.append(word)
 
+    # إعادة تجميع الكلمات المصححة في نص واحد
     return " ".join(corrected_words)
