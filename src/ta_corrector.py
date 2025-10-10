@@ -4,7 +4,7 @@ import csv
 import os
 
 # ----------------------------------------------------------------------
-# تحديد مكان ملف البيانات (الموجود في المجلد الرئيسي)
+# تحديد مكان ملف البيانات (العثور عليه في المجلد الرئيسي)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE_PATH = os.path.join(BASE_DIR, '..', 'جدول البيانات للقاعدة_الدلالية.csv') 
 # ----------------------------------------------------------------------
@@ -12,7 +12,6 @@ DATA_FILE_PATH = os.path.join(BASE_DIR, '..', 'جدول البيانات للق�
 # تحميل البيانات من ملف CSV
 def load_semantic_data(file_path):
     """تحميل البيانات التدريبية من ملف CSV."""
-    # ... (بقية دالة load_semantic_data كما أرسلتها سابقاً)
     data = []
     try:
         # قراءة الملف باستخدام ترميز utf-8
@@ -46,8 +45,6 @@ def apply_semantic_ta_correction(text: str) -> str:
     """
     يطبق طبقة التصحيح الدلالي لتاء التأنيث بالاعتماد على البيانات المحسنة.
     """
-    # ... (بقية دالة apply_semantic_ta_correction كما أرسلتها سابقاً)
-    # لا داعي لإعادة كتابة الدالة كاملة إذا لم تتغير
     if not SEMATNIC_TA_DATA:
         return text 
 
@@ -55,6 +52,7 @@ def apply_semantic_ta_correction(text: str) -> str:
     corrected_words = []
 
     for i, word in enumerate(words):
+        # تجريد الكلمة من علامات الترقيم
         clean_word = word.strip("،.؛:").strip("ةت")
         
         if clean_word not in TA_WORDS:
@@ -63,6 +61,7 @@ def apply_semantic_ta_correction(text: str) -> str:
         
         is_designated = False
         
+        # البحث عن أقرب تطابق في البيانات الموثقة 
         for entry in SEMATNIC_TA_DATA:
             if entry.get("الكلمة_الأصلية") == clean_word and entry.get("تصنيف_التاء") == "تعيين":
                 
@@ -72,12 +71,15 @@ def apply_semantic_ta_correction(text: str) -> str:
                 if not clue or clue == 'لا':
                     continue
 
+                # أ) التعيين النحوي الصريح (القرينة هي كلمة تالية مباشرة)
                 if designation_type in ["نحوي صريح", "تعيين بالاسم والنوع"]:
                     if i + 1 < len(words) and words[i+1].strip().strip(",").strip(".").lower().startswith(clue):
                         is_designated = True
                         break
                 
+                # ب) التعيين بالفعل أو الوصف السياقي (القرينة هي فعل أو وصف سابق)
                 elif designation_type in ["فعلي/ثبوت", "سياقي/حدثي", "نوعي/شخصي"]:
+                    # نبحث في الكلمات الأربع السابقة (نافذة سياقية)
                     for j in range(max(0, i - 4), i):
                         if words[j].strip().strip(",").strip(".").lower().startswith(clue):
                             is_designated = True
@@ -85,6 +87,7 @@ def apply_semantic_ta_correction(text: str) -> str:
                     if is_designated:
                         break
         
+        # تطبيق التصحيح النهائي: تاء مفتوحة إذا تم التعيين، مربوطة إذا لا
         if is_designated:
             corrected_words.append(clean_word + "ت")
         else:
